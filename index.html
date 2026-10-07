@@ -1,0 +1,64 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Excord</title>
+<style>
+:root{--bg:#0f1020;--c:#1a1b33;--c2:#26274d;--p:#7c5cff;--t:#f1f1ff;--m:#9a9bc4}*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--t);font-family:system-ui,sans-serif}
+#app{max-width:480px;margin:0 auto;height:100%;display:flex;flex-direction:column}
+button{background:var(--p);color:#fff;border:0;border-radius:10px;padding:10px 14px;font-weight:600;font-size:14px}button.g{background:var(--c2)}button.r{background:#e5484d}
+input{width:100%;background:var(--c);border:1px solid var(--c2);color:var(--t);border-radius:10px;padding:12px;font-size:15px;margin:6px 0}
+.pg{padding:16px;overflow:auto;flex:1}.top{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--c)}.top b{flex:1}
+.nav{display:flex;background:var(--c)}.nav div{flex:1;text-align:center;padding:12px 0;font-size:12px;color:var(--m)}.nav .on{color:var(--p);font-weight:700}
+.row{display:flex;align-items:center;gap:10px;padding:10px;background:var(--c);border-radius:12px;margin:8px 0}.f{flex:1;min-width:0}.sm{font-size:12px;color:var(--m)}
+.msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:6px}.m{max-width:78%;padding:8px 12px;border-radius:14px;background:var(--c2);font-size:14px}.m.me{align-self:flex-end;background:var(--p)}
+.bar{display:flex;gap:8px;padding:10px;background:var(--c)}.bar input{margin:0}.err{color:#ff7b80;font-size:13px;min-height:18px}
+.toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#fff;color:#111;padding:10px 16px;border-radius:12px;font-weight:600;z-index:9}
+.logo{font-size:40px;font-weight:800;color:var(--p)}
+</style></head><body><div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script>
+// ====== YAHAN APNI 3 VALUES PASTE KARO (guide Step 6) ======
+const SUPABASE_URL='https://ciukhxyurdbqszgnwyyu.supabase.co',SUPABASE_KEY='sb_publishable_fS49B0_HlyLgmIKyMcta2w_h9kprCn9',LK_URL='wss://syj22uz2.livekit.cloud';
+// ===========================================================
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=i=>document.getElementById(i),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const BAD=['fuck','shit','bitch','sex','porn','rape','dick','cunt'],ROOMS=['Lounge','Gaming Arena','Chill Zone'];
+let me=null,S={tab:'chats',peer:null,mode:'in',room:null,n:1,mute:false,msgs:[]},lk=null;
+const T=t=>{const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),2800)};
+const E=t=>$('e').textContent=t;
+async function boot(){const{data:{session}}=await sb.auth.getSession();if(session)await load(session.user);R()}
+async function load(u){const{data}=await sb.from('profiles').select('*').eq('id',u.id).single();me=data;if(me)listen()}
+function listen(){sb.channel('live').on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'to_id=eq.'+me.id},p=>{if(S.peer&&S.peer.id==p.new.from_id){S.msgs.push(p.new);chatUI()}else T('New message')})
+.on('postgres_changes',{event:'INSERT',schema:'public',table:'requests',filter:'to_id=eq.'+me.id},()=>{T('New friend request');if(S.tab=='mail'&&!S.peer)R()}).subscribe()}
+function R(){if(!me)return authUI();if(S.peer)return chatUI();
+$('app').innerHTML=`<div class="top"><b>Excord</b><span class="sm">@${me.username}</span></div><div class="pg" id="pg">Loading...</div><div class="nav">${[['chats','💬 Chats'],['search','🔍 Search'],['mail','📬 Mail'],['vc','🎙️ Voice'],['me','👤 Me']].map(t=>`<div class="${S.tab==t[0]?'on':''}" onclick="S.tab='${t[0]}';R()">${t[1]}</div>`).join('')}</div>`;TAB()}
+function authUI(){const up=S.mode=='up';$('app').innerHTML=`<div class="pg"><div class="logo">Excord</div><h2>${up?'Sign up':'Sign in'}</h2>${up?'<input id="f" placeholder="First name"><input id="l" placeholder="Last name"><input id="em" type="email" placeholder="Email">':''}<input id="u" placeholder="Username" autocapitalize="off"><input id="p" type="password" placeholder="Password"><div class="err" id="e"></div><button style="width:100%" onclick="${up?'signup()':'signin()'}">${up?'Create account':'Sign in'}</button><p class="sm" style="text-align:center" onclick="S.mode='${up?'in':'up'}';R()"><u>${up?'Already have account? Sign in':'New? Sign up'}</u></p></div>`}
+async function signup(){const f=$('f').value.trim(),l=$('l').value.trim(),em=$('em').value.trim(),u=$('u').value.trim().toLowerCase(),p=$('p').value;
+if(!f||!/^\S+@\S+\.\S+$/.test(em))return E('Naam aur email sahi daalo');if(!/^[a-z0-9_]{3,16}$/.test(u))return E('Username 3-16 chars: a-z 0-9 _');if(BAD.some(w=>u.includes(w)))return E('Is username mein blocked word hai');if(p.length<6)return E('Password min 6');
+const{data,error}=await sb.auth.signUp({email:u+'@excord.app',password:p,options:{data:{real_email:em}}});if(error)return E(/registered/i.test(error.message)?'Username already taken, dusra try karo':error.message);
+const r=await sb.from('profiles').insert({id:data.user.id,username:u,name:f+' '+l});if(r.error)return E('Username already taken, dusra try karo');await load(data.user);R()}
+async function signin(){const u=$('u').value.trim().toLowerCase(),{data,error}=await sb.auth.signInWithPassword({email:u+'@excord.app',password:$('p').value});if(error)return E('Username ya password galat');await load(data.user);R()}
+async function friends(){const{data}=await sb.from('requests').select('*').eq('status','accepted').or(`from_id.eq.${me.id},to_id.eq.${me.id}`);const ids=(data||[]).map(r=>r.from_id==me.id?r.to_id:r.from_id);if(!ids.length)return[];return(await sb.from('profiles').select('id,username,name').in('id',ids)).data||[]}
+async function TAB(){const t=S.tab,pg=$('pg');
+if(t=='chats'){const fs=await friends();pg.innerHTML='<h2>Friends</h2>'+(fs.length?fs.map(f=>`<div class="row" onclick='openChat(${JSON.stringify(f)})'><div class="f"><b>${esc(f.name)}</b><div class="sm">@${f.username}</div></div></div>`).join(''):'<p class="sm">Abhi koi friend nahi. Search se dhundo.</p>')}
+if(t=='search')pg.innerHTML='<h2>Find people</h2><input placeholder="Username search" oninput="srch(this.value)" autocapitalize="off"><div id="sr"></div>';
+if(t=='mail'){const{data}=await sb.from('requests').select('id,from_id,from:profiles!requests_from_id_fkey(username,name)').eq('to_id',me.id).eq('status','pending');pg.innerHTML='<h2>Mailbox</h2>'+((data||[]).length?data.map(r=>`<div class="row"><div class="f"><b>@${r.from.username}</b> friend banna chahta hai</div><button onclick="acc(${r.id})">Accept</button><button class="g" onclick="del(${r.id})">Cancel</button></div>`).join(''):'<p class="sm">Koi request nahi.</p>')}
+if(t=='vc')vcTab();
+if(t=='me'){pg.innerHTML=`<h2>${esc(me.name)}</h2><p class="sm">@${me.username} · 🪙 ${me.cord} cord</p><input id="nm" value="${esc(me.name)}"><input id="bio" placeholder="Description" value="${esc(me.bio||'')}"><button onclick="saveMe()">Save</button><br><br><button class="r" onclick="sb.auth.signOut().then(()=>location.reload())">Sign out</button>`}}
+async function saveMe(){const n=$('nm').value.trim()||me.name,b=$('bio').value.trim();await sb.from('profiles').update({name:n,bio:b}).eq('id',me.id);me.name=n;me.bio=b;T('Saved');R()}
+async function srch(q){q=q.trim().toLowerCase();const el=$('sr');if(!q){el.innerHTML='';return}const{data}=await sb.from('profiles').select('id,username,name').ilike('username',q+'%').neq('id',me.id).limit(10);
+el.innerHTML=(data||[]).map(u=>`<div class="row"><div class="f"><b>${esc(u.name)}</b><div class="sm">@${u.username}</div></div><button onclick="add('${u.id}')">Add</button><button class="g" onclick='openChat(${JSON.stringify(u)})'>Msg</button></div>`).join('')||'<p class="sm">Koi nahi mila.</p>'}
+async function add(id){const{error}=await sb.from('requests').insert({from_id:me.id,to_id:id});T(error?'Request pehle se bheji hai':'Friend request sent')}
+async function acc(id){await sb.from('requests').update({status:'accepted'}).eq('id',id);T('Ab tum friends ho!');R()}
+async function del(id){await sb.from('requests').delete().eq('id',id);R()}
+async function openChat(p){S.peer=p;const a=me.id,b=p.id;const{data}=await sb.from('messages').select('*').or(`and(from_id.eq.${a},to_id.eq.${b}),and(from_id.eq.${b},to_id.eq.${a})`).order('created_at');S.msgs=data||[];chatUI()}
+function chatUI(){$('app').innerHTML=`<div class="top"><button class="g" onclick="S.peer=null;R()">←</button><b>${esc(S.peer.name)}</b></div><div class="msgs" id="ms">${S.msgs.map(m=>`<div class="m ${m.from_id==me.id?'me':''}">${esc(m.body)}</div>`).join('')||'<p class="sm">Hi bolo 👋 (friend banne se pehle sirf 3 messages)</p>'}</div><div class="bar"><input id="ci" placeholder="Message" onkeydown="if(event.key=='Enter')send()"><button onclick="send()">Send</button></div>`;const e=$('ms');e.scrollTop=e.scrollHeight}
+async function send(){const t=$('ci').value.trim();if(!t)return;const{data,error}=await sb.from('messages').insert({from_id:me.id,to_id:S.peer.id,body:t}).select().single();if(error)return T(error.message);S.msgs.push(data);chatUI()}
+function vcTab(){const pg=$('pg');if(!S.room){pg.innerHTML='<h2>Voice rooms</h2>'+ROOMS.map(r=>`<div class="row"><div class="f"><b>${r}</b><div class="sm">Real voice, 99+ log</div></div><button onclick="join('${r}')">Join</button></div>`).join('');return}
+pg.innerHTML=`<h2>🎙️ ${S.room}</h2><p>${S.n} log room mein hain</p><button onclick="mute()">${S.mute?'Unmute':'Mute'}</button> <button class="r" onclick="leave()">Leave</button>`}
+async function join(name){try{const{data,error}=await sb.functions.invoke('lk-token',{body:{room:name}});if(error)throw error;lk=new LivekitClient.Room();const up=()=>{S.n=lk.remoteParticipants.size+1;if(S.tab=='vc'&&!S.peer)vcTab()};
+lk.on('trackSubscribed',t=>{if(t.kind=='audio')document.body.append(t.attach())}).on('participantConnected',up).on('participantDisconnected',up);
+await lk.connect(LK_URL,data.token);await lk.localParticipant.setMicrophoneEnabled(true);S.room=name;S.mute=false;up();vcTab()}catch(e){T('Voice error: '+(e.message||e))}}
+async function mute(){S.mute=!S.mute;await lk.localParticipant.setMicrophoneEnabled(!S.mute);vcTab()}
+function leave(){lk&&lk.disconnect();document.querySelectorAll('audio').forEach(a=>a.remove());S.room=null;vcTab()}
+boot();
+</script></body></html>
