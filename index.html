@@ -115,7 +115,7 @@ const av=(u,z=44)=>{u=u||{};P[u.id]=u;const c=cl(u.anim),rg=c[0]=='r',pc=okp(u.p
 const PF='id,username,name,pic,anim';
 async function boot(){R();const{data:{session}}=await sb.auth.getSession();if(session)await load(session.user);setTimeout(()=>{S.scr='app';R()},2000)}
 async function load(u){me=(await sb.from('profiles').select('*').eq('id',u.id).single()).data;if(me)listen();else await sb.auth.signOut()}
-function listen(){procJoin();sb.channel('live').on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'to_id=eq.'+me.id},p=>{const m=p.new;if(m.body.startsWith('::call:')){ring(m);return}if(S.peer&&S.peer.id==m.from_id){S.msgs.push(m);chatUI()}else T('New message')})
+function listen(){procJoin();try{sb.functions.invoke('lk-token',{body:{room:'warm-up'}})}catch(e){}sb.channel('ring-'+me.id).on('broadcast',{event:'ring'},p=>ring({from_id:p.payload.from,body:'::call:'+p.payload.room})).subscribe();sb.channel('live').on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'to_id=eq.'+me.id},p=>{const m=p.new;if(m.body.startsWith('::call:')){ring(m);return}if(S.peer&&S.peer.id==m.from_id){S.msgs.push(m);chatUI()}else T('New message')})
 .on('postgres_changes',{event:'INSERT',schema:'public',table:'requests',filter:'to_id=eq.'+me.id},()=>{T('New friend request');if(S.tab=='mail'&&!S.peer&&!S.srv)R()}).subscribe()}
 function R(){const a=$('app');
 if(S.scr=='splash'){a.innerHTML='<div class="sp0"><div class="logo big">Excord</div><div class="sm">No limits. Just chat.</div></div>';return}
@@ -245,7 +245,7 @@ function fxApply(){let d=$('fx');if(!d){d=document.createElement('div');d.id='fx
 async function viewProf(id){const{data:u}=await sb.from('profiles').select(PF+',bio,link,ban').eq('id',id).single();if(!u)return;modal(`<div class="ban ${cl(u.ban)||'b-none'}" style="border-radius:14px"></div><div style="margin-top:-36px;padding-left:10px">${av(u,76)}</div><h2 style="margin:8px 0 0">${esc(u.name)}</h2><div class="sm">@${u.username}</div><p>${esc(u.bio||'')}</p>${/^https?:\/\//.test(u.link||'')?`<a class="sm" href="${esc(u.link)}" target="_blank" rel="noopener">🔗 ${esc(u.link)}</a>`:''}`)}
 let RT;
 function closeRing(){clearInterval(RT);const d=$('in');if(d)d.remove()}
-async function ring(m){let u=P[m.from_id];if(!u)u=(await sb.from('profiles').select(PF).eq('id',m.from_id).single()).data;const r=m.body.slice(7);if(!u||!/^[\w-]{3,100}$/.test(r))return;closeRing();
+async function ring(m){let u=P[m.from_id];if(!u)u=(await sb.from('profiles').select(PF).eq('id',m.from_id).single()).data;const r=m.body.slice(7);if(!u||!/^[\w-]{3,100}$/.test(r))return;if(S.rr==r&&Date.now()-S.rt<5000)return;S.rr=r;S.rt=Date.now();closeRing();tok(r);
 const d=document.createElement('div');d.id='in';d.className='incall';d.innerHTML=`<div class="rg">${av(u,110)}</div><h2>${esc(u.name)}</h2><p class="sm">Incoming voice call…</p><div class="vg" style="gap:40px;margin-top:30px"><button class="cb red" onclick="declineCall('${u.id}')">${ic('x',28)}</button><button class="cb grn" onclick="acceptCall('${r}','${u.id}')">${ic('phone',28)}</button></div>`;document.body.append(d);
 try{navigator.vibrate&&navigator.vibrate([300,200,300,200,300])}catch(e){}
 const A=ac();A.resume();RT=setInterval(()=>{try{[880,660].forEach((f,i)=>{const o=A.createOscillator(),g=A.createGain(),t=A.currentTime+i*.18;o.frequency.value=f;o.connect(g);g.connect(A.destination);g.gain.setValueAtTime(.15,t);g.gain.exponentialRampToValueAtTime(.001,t+.16);o.start(t);o.stop(t+.17)})}catch(e){}},1400);setTimeout(closeRing,30000)}
@@ -338,5 +338,36 @@ function callScreen(){const o=$('cs');if(o)o.remove();if(!S.room||!S.big)return;
 d.innerHTML=`<button class="g ib mini" onclick="S.big=0;cbar()">${ic('down')}</button><div class="rg">${S.cp?av(S.cp,120):`<div class="av" style="width:120px;height:120px">${ic('speaker',54)}</div>`}</div><h2>${esc((S.rl||S.room).replace('📞 ',''))}</h2><p class="sm">${S.n>1?'🟢 '+S.n+' in call':'Calling… waiting for others'}</p><p class="sm" style="margin-top:14px">Voice changer</p>
 <div class="vg" style="justify-content:center;margin:6px 0 24px">${['normal','robot','echo','alien'].map(f=>`<button class="${S.fx==f?'':'g'}" onclick="S.fx='${f}';wire();callScreen()">${f}</button>`).join('')}</div>
 <div class="vg" style="gap:30px;justify-content:center"><button class="cb ${S.mute?'red':'g'}" onclick="mute()">${ic(S.mute?'micoff':'mic',28)}</button><button class="cb red" onclick="leave()">${ic('phone',28)}</button></div>`;document.body.append(d)}
+document.addEventListener('click',()=>{try{lk&&lk.startAudio&&lk.startAudio().catch(()=>{})}catch(e){}});
+const TK={};
+function tok(name){if(!TK[name]){TK[name]=sb.functions.invoke('lk-token',{body:{room:name}}).then(async({data,error})=>{if(error){let m='';try{m=await error.context.text()}catch(_){}throw new Error(error.message+' '+m)}return data.token});setTimeout(()=>delete TK[name],60000)}return TK[name]}
+async function join(name,label){if(S.joining)return;S.joining=1;S.cx=false;S.conn=name;S.rl=label||name;S.stg='token';S.seen=0;S.raw=null;S.fxOn=0;S.fx='normal';
+try{const A=ac();A.resume().catch(()=>{});if(S.big)callScreen();else T('Connecting…');
+const mp=navigator.mediaDevices.getUserMedia({audio:true}).then(x=>{x.getTracks().forEach(t=>t.stop())},e=>e);
+const tp=tok(name);lk=new LivekitClient.Room();
+const up=()=>{S.n=lk.remoteParticipants.size+1;if(S.n>1)S.seen=1;else if(S.seen&&/^📞/.test(S.rl||'')){S.seen=0;T('Call khatam ho gayi');leave();return}if(S.tab=='vc'&&!S.peer&&!S.srv)vcTab();cbar()};
+lk.on('trackSubscribed',t=>{if(t.kind=='audio'){const e=t.attach();e.setAttribute('playsinline','');document.body.append(e);e.play&&e.play().catch(()=>{})}}).on('trackUnsubscribed',t=>t.detach()).on('participantConnected',up).on('participantDisconnected',up).on('disconnected',()=>{if(S.room){S.room=null;S.big=0;cbar();T('Call disconnect ho gayi')}}).on('audioPlaybackChanged',()=>{if(!lk.canPlaybackAudio)T('Awaaz sunne ke liye screen par ek baar tap karo')});
+const token=await tp;delete TK[name];if(S.cx)throw new Error('cancelled');S.stg='connect';
+await lk.connect(LK_URL,token);if(S.cx)throw new Error('cancelled');
+S.stg='mic';const mr=await mp;if(mr)throw mr;await lk.localParticipant.setMicrophoneEnabled(true);try{await lk.startAudio()}catch(e){}
+if(S.cx)throw new Error('cancelled');
+S.room=name;S.conn=null;S.joining=0;S.mute=0;S.stg='';up();vcTab();cbar()}
+catch(e){const c=S.cx;S.joining=0;S.conn=null;try{lk&&lk.disconnect()}catch(_){}S.big=0;cbar();S.cx=false;if(!c)T('Voice error ['+S.stg+']: '+(e.message||e))}}
+async function wire(){try{const pub=lk&&lk.localParticipant.getTrackPublication('microphone');if(!pub||!pub.track)return;const tr=pub.track;if(!S.raw)S.raw=tr.mediaStreamTrack.clone();
+try{S.src&&S.src.disconnect()}catch(e){}try{S.osc&&S.osc.stop()}catch(e){}const fx=S.fx;
+if(fx=='normal'){if(S.fxOn){await tr.replaceTrack(S.raw,true);S.fxOn=0}return}
+const A=ac();await A.resume();S.src=A.createMediaStreamSource(new MediaStream([S.raw]));S.dst=A.createMediaStreamDestination();
+if(fx=='echo'){const d=A.createDelay(1),f=A.createGain();d.delayTime.value=.25;f.gain.value=.45;S.src.connect(S.dst);S.src.connect(d);d.connect(f);f.connect(d);d.connect(S.dst)}
+else{const g=A.createGain();g.gain.value=0;S.osc=A.createOscillator();S.osc.frequency.value=fx=='robot'?50:300;S.osc.connect(g.gain);S.osc.start();S.src.connect(g);g.connect(S.dst)}
+if(!S.fxOn){await tr.replaceTrack(S.dst.stream.getAudioTracks()[0],true);S.fxOn=1}}catch(e){T('Voice changer nahi chala: '+(e.message||e))}}
+async function mute(){S.mute=!S.mute;try{await lk.localParticipant.setMicrophoneEnabled(!S.mute)}catch(e){}vcTab();cbar()}
+function leave(){S.cx=true;try{lk&&lk.disconnect()}catch(e){}try{S.raw&&S.raw.stop()}catch(e){}S.raw=null;S.fxOn=0;S.src=null;document.querySelectorAll('body>audio').forEach(a=>a.remove());S.room=null;S.conn=null;S.joining=0;S.big=0;S.cp=null;vcTab();cbar()}
+async function callPeer(){const r='dm-'+[me.id,S.peer.id].sort().join('_'),pid=S.peer.id;S.cp=S.peer;S.big=1;
+sb.from('messages').insert({from_id:me.id,to_id:pid,body:'::call:'+r}).then(({error})=>{if(error)T('Call bhejne mein dikkat')});
+const c=sb.channel('ring-'+pid);c.subscribe(st=>{if(st=='SUBSCRIBED'){c.send({type:'broadcast',event:'ring',payload:{from:me.id,room:r}});setTimeout(()=>sb.removeChannel(c),4000)}});
+await join(r,'📞 '+S.peer.name)}
+function callScreen(){const o=$('cs');if(o)o.remove();if(!(S.room||S.conn)||!S.big)return;const d=document.createElement('div');d.id='cs';d.className='callscr';const st=S.conn&&!S.room?'Connecting…':S.n>1?'🟢 '+S.n+' in call':'Calling… waiting for others';
+d.innerHTML=`<button class="g ib mini" onclick="S.big=0;cbar()">${ic('down')}</button><div class="rg">${S.cp?av(S.cp,120):`<div class="av" style="width:120px;height:120px">${ic('speaker',54)}</div>`}</div><h2>${esc((S.rl||S.room||'').replace('📞 ',''))}</h2><p class="sm">${st}</p>${S.room?`<p class="sm" style="margin-top:14px">Voice changer</p><div class="vg" style="justify-content:center;margin:6px 0 24px">${['normal','robot','echo','alien'].map(f=>`<button class="${S.fx==f?'':'g'}" onclick="S.fx='${f}';wire();callScreen()">${f}</button>`).join('')}</div>`:'<div style="height:30px"></div>'}
+<div class="vg" style="gap:30px;justify-content:center">${S.room?`<button class="cb ${S.mute?'red':'g'}" onclick="mute()">${ic(S.mute?'micoff':'mic',28)}</button>`:''}<button class="cb red" onclick="leave()">${ic('phone',28)}</button></div>`;document.body.append(d)}
 boot();
 </script></body></html>
